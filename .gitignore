@@ -36,3 +36,5 @@ temp/
 
 # VLC cache
 vlc-cache/
+
+.todo.md
