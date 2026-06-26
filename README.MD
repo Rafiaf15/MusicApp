@@ -72,13 +72,6 @@
 
 ---
 
-## 📸 Screenshot
-
-<div align="center">
-  <img src="screenshots/main.png" width="800"/>
-  <p><em>Tampilan utama aplikasi</em></p>
-</div>
-
 ---
 
 ## 📋 Requirements
@@ -261,7 +254,6 @@ Project ini menggunakan **MIT License**.
 
 ## 📞 Kontak
 
-* Email: [email-anda@example.com](mailto:email-anda@example.com)
 * Issues: GitHub Issues
 * Discussions: GitHub Discussions
 
