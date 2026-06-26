@@ -72,8 +72,6 @@
 
 ---
 
----
-
 ## 📋 Requirements
 
 ### System
@@ -258,10 +256,6 @@ Project ini menggunakan **MIT License**.
 * Discussions: GitHub Discussions
 
 ---
-
-## ⭐ Support
-
-Jika project ini bermanfaat, berikan ⭐ di repository ini.
 
 ## ⭐ Star History
 
