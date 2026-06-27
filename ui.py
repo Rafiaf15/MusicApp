@@ -125,6 +125,11 @@ class MusicApp(QWidget):
         self.setGeometry(100, 100, 1000, 800)
         self.setStyleSheet(MAIN_STYLE)
         self.setObjectName("centralWidget")
+        
+        # ✅ NEW: Set window icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.png')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
         # Data songs
         self.songs = []
@@ -142,6 +147,7 @@ class MusicApp(QWidget):
         
         # ✅ NEW: Loading state
         self.is_loading = False
+        self._force_quit = False  # Flag untuk quit tanpa dialog
 
         # VLC Instance
         self.vlc_instance = vlc.Instance('--no-xlib', '--quiet')
@@ -254,7 +260,7 @@ class MusicApp(QWidget):
         self.shuffle_btn.setFixedSize(45, 45)
         self.shuffle_btn.setIcon(qta.icon('fa5s.random', color='#B3B3B3', size=18))
         self.shuffle_btn.setIconSize(QSize(18, 18))
-        self.shuffle_btn.setToolTip("Shuffle (Acak)")
+        self.shuffle_btn.setToolTip("Shuffle (S)")
         self.shuffle_btn.clicked.connect(self.toggle_shuffle)
         self.shuffle_btn.setStyleSheet("""
             QPushButton {
@@ -273,7 +279,7 @@ class MusicApp(QWidget):
         self.repeat_btn.setFixedSize(45, 45)
         self.repeat_btn.setIcon(qta.icon('fa5s.sync', color='#B3B3B3', size=18))
         self.repeat_btn.setIconSize(QSize(18, 18))
-        self.repeat_btn.setToolTip("Repeat (Ulangi)")
+        self.repeat_btn.setToolTip("Repeat (R)")
         self.repeat_btn.clicked.connect(self.toggle_repeat)
         self.repeat_btn.setStyleSheet("""
             QPushButton {
@@ -364,9 +370,9 @@ class MusicApp(QWidget):
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
 
-        # ✅ NEW: Keyboard shortcuts hint
-        hint_label = QLabel("⌨️ Space: Play/Pause  |  ←→: Prev/Next  |  ↑↓: Volume")
-        hint_label.setStyleSheet("color: #727272; font-size: 11px; margin-top: 10px;")
+        # ✅ UPDATED: Keyboard shortcuts hint
+        hint_label = QLabel("⌨️ Space: Play  |  ←→: Prev/Next  |  ↑↓: Vol  |  Ctrl+Q: Quit  |  Esc: Minimize")
+        hint_label.setStyleSheet("color: #727272; font-size: 10px; margin-top: 10px;")
         hint_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(hint_label)
 
@@ -463,11 +469,19 @@ class MusicApp(QWidget):
         """Setup system tray icon"""
         if not QSystemTrayIcon.isSystemTrayAvailable():
             print("⚠️ System tray tidak tersedia")
+            self.tray_icon = None
             return
             
         # Buat tray icon
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(qta.icon('fa5s.music', color='#1DB954', size=32))
+        
+        # Pakai icon dari file atau fallback ke qtawesome
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.png')
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
+        else:
+            self.tray_icon.setIcon(qta.icon('fa5s.music', color='#1DB954', size=32))
+            
         self.tray_icon.setToolTip("🎵 Music Player Pro")
         
         # Menu tray
@@ -519,25 +533,16 @@ class MusicApp(QWidget):
 
     def quit_app(self):
         """Quit aplikasi dari tray"""
-        self.tray_icon.hide()
+        self._force_quit = True
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.hide()
         self.close()
-        from PyQt5.QtWidgets import QApplication
-        QApplication.instance().quit()
 
     def closeEvent(self, event):
-        """Override close event - minimize ke tray instead of quit"""
-        # Jika user klik close, minimize ke tray
-        if self.tray_icon.isVisible():
-            self.hide()
-            self.tray_icon.showMessage(
-                "Music Player Pro",
-                "Aplikasi berjalan di background. Klik icon di tray untuk membuka.",
-                QSystemTrayIcon.Information,
-                2000
-            )
-            event.ignore()  # Jangan close, hanya hide
-        else:
-            # Jika tray tidak ada, close normal
+        """Override close event - tanya user mau minimize atau quit"""
+        # Cek apakah dipanggil dari quit_app (sudah konfirmasi)
+        if self._force_quit:
+            self._force_quit = False
             self.player.stop()
             self.timer.stop()
             self.spinner_timer.stop()
@@ -547,12 +552,96 @@ class MusicApp(QWidget):
             if hasattr(self, 'url_thread') and self.url_thread.isRunning():
                 self.url_thread.quit()
                 self.url_thread.wait()
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.hide()
             event.accept()
+            return
+        
+        # Tampilkan dialog konfirmasi
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Keluar Aplikasi")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setText("<b>Apa yang ingin Anda lakukan?</b>")
+        msg_box.setInformativeText("Minimize untuk menjalankan di background, atau Quit untuk keluar sepenuhnya.")
+        
+        # Tambah button custom
+        btn_minimize = msg_box.addButton("📍 Minimize", QMessageBox.AcceptRole)
+        btn_quit = msg_box.addButton("❌ Quit", QMessageBox.DestructiveRole)
+        btn_cancel = msg_box.addButton("Batal", QMessageBox.RejectRole)
+        
+        msg_box.setDefaultButton(btn_minimize)
+        
+        # Styling dialog
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #282828;
+                color: white;
+            }
+            QMessageBox QLabel {
+                color: white;
+                font-size: 13px;
+            }
+            QMessageBox QPushButton {
+                background-color: #1DB954;
+                color: white;
+                border: none;
+                border-radius: 15px;
+                padding: 8px 20px;
+                font-weight: bold;
+                min-width: 100px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #1ED760;
+            }
+        """)
+        
+        msg_box.exec_()
+        
+        clicked = msg_box.clickedButton()
+        
+        if clicked == btn_quit:
+            # ✅ Quit aplikasi
+            self._force_quit = True
+            self.close()  # Recursive call, akan di-handle di atas
+            
+        elif clicked == btn_minimize:
+            # ✅ Minimize ke tray
+            if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
+                self.hide()
+                self.tray_icon.showMessage(
+                    "Music Player Pro",
+                    "🎵 Aplikasi berjalan di background.\nKlik kanan icon tray untuk menu.",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+                event.ignore()
+            else:
+                # Tray tidak tersedia, langsung quit
+                self._force_quit = True
+                self.close()
+        else:
+            # Batal
+            event.ignore()
 
     # ==================== KEYBOARD SHORTCUTS ====================
     def keyPressEvent(self, event: QKeyEvent):
         """Handle keyboard shortcuts"""
         key = event.key()
+        modifiers = event.modifiers()
+        
+        # ✅ Ctrl+Q = Instant Quit
+        if key == Qt.Key_Q and modifiers == Qt.ControlModifier:
+            self._force_quit = True
+            self.close()
+            event.accept()
+            return
+        
+        # ✅ Escape = Minimize ke tray
+        if key == Qt.Key_Escape:
+            if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
+                self.hide()
+                event.accept()
+                return
         
         # Space: Play/Pause
         if key == Qt.Key_Space:
@@ -621,7 +710,8 @@ class MusicApp(QWidget):
             
             self.shuffle_btn.setIcon(qta.icon('fa5s.random', color='#1DB954', size=18))
             self.status_label.setText("🔀 Shuffle ON")
-            self.tray_icon.showMessage("Shuffle", "Mode acak aktif", QSystemTrayIcon.Information, 1500)
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.showMessage("Shuffle", "Mode acak aktif", QSystemTrayIcon.Information, 1500)
         else:
             self.shuffle_btn.setIcon(qta.icon('fa5s.random', color='#B3B3B3', size=18))
             self.status_label.setText("🔀 Shuffle OFF")
@@ -795,7 +885,7 @@ class MusicApp(QWidget):
         self.fetch_progress.setVisible(False)
         
         # ✅ NEW: Show tray notification
-        if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
+        if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
             self.tray_icon.showMessage(
                 "Music Player Pro",
                 f"✅ {loaded} lagu siap diputar!",
@@ -841,7 +931,7 @@ class MusicApp(QWidget):
         self.status_label.setText("▶ Sedang memutar...")
         
         # ✅ NEW: Update tray tooltip
-        if hasattr(self, 'tray_icon'):
+        if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.setToolTip(f"🎵 {title} - {artist}")
             self.tray_play_action.setText("⏸ Pause")
         

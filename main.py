@@ -1,7 +1,9 @@
 import sys
 import subprocess
+import os
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 from ui import MusicApp
 
 def check_dependencies():
@@ -14,7 +16,6 @@ def check_dependencies():
         missing.append("python-vlc")
     
     try:
-        # ✅ Tambahkan creationflags
         creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
         subprocess.run(
             ['yt-dlp', '--version'], 
@@ -43,6 +44,11 @@ def main():
     
     app = QApplication(sys.argv)
     app.setApplicationName("Music Player Pro")
+    
+    # ✅ NEW: Set application icon
+    icon_path = os.path.join(os.path.dirname(__file__), 'icon.png')
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     
     if not check_dependencies():
         sys.exit(1)
