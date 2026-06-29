@@ -370,71 +370,134 @@ class MainWindow(QWidget):
         """Clear status label"""
         self.status_label.setText("")
     
-    def closeEvent(self, event):
-        if self._force_quit:
-            self._force_quit = False
-            if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.hide()
-            event.accept()
-            return
+def closeEvent(self, event):
+    """Override close event - tanya user mau minimize atau quit"""
+    # Cek apakah dipanggil dari quit_app (sudah konfirmasi)
+    if self._force_quit:
+        self._force_quit = False
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.hide()
+        event.accept()
+        return
+    
+    # Buat dialog custom yang lebih rapi
+    msg_box = QMessageBox(self)
+    msg_box.setWindowTitle("Keluar Aplikasi")
+    msg_box.setIcon(QMessageBox.Question)
+    msg_box.setText("<b style='font-size: 14px;'>Apa yang ingin Anda lakukan?</b>")
+    msg_box.setInformativeText(
+        "<span style='color: #B3B3B3; font-size: 12px;'>"
+        "Minimize untuk menjalankan di background,<br>"
+        "atau Quit untuk keluar sepenuhnya."
+        "</span>"
+    )
+    
+    # Tambah button custom dengan styling berbeda
+    btn_minimize = msg_box.addButton("📍  Minimize", QMessageBox.AcceptRole)
+    btn_quit = msg_box.addButton("❌  Quit", QMessageBox.DestructiveRole)
+    btn_cancel = msg_box.addButton("Batal", QMessageBox.RejectRole)
+    
+    msg_box.setDefaultButton(btn_minimize)
+    
+    # Styling dialog yang lebih rapi dan konsisten
+    msg_box.setStyleSheet("""
+        /* Background dialog */
+        QMessageBox {
+            background-color: #282828;
+            color: white;
+            border: 1px solid #3E3E3E;
+        }
         
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Keluar Aplikasi")
-        msg_box.setIcon(QMessageBox.Question)
-        msg_box.setText("<b>Apa yang ingin Anda lakukan?</b>")
-        msg_box.setInformativeText("Minimize untuk menjalankan di background, atau Quit untuk keluar sepenuhnya.")
+        /* Icon dan label utama */
+        QMessageBox QLabel#qt_msgbox_label,
+        QMessageBox QLabel#qt_msgboxex_icon_label {
+            color: white;
+            background: transparent;
+            min-width: 300px;
+        }
         
-        btn_minimize = msg_box.addButton("📍 Minimize", QMessageBox.AcceptRole)
-        btn_quit = msg_box.addButton("❌ Quit", QMessageBox.DestructiveRole)
-        btn_cancel = msg_box.addButton("Batal", QMessageBox.RejectRole)
+        /* Informative text */
+        QMessageBox QLabel {
+            color: #B3B3B3;
+            font-size: 12px;
+            padding: 5px;
+            background: transparent;
+        }
         
-        msg_box.setDefaultButton(btn_minimize)
+        /* Semua tombol - base style */
+        QMessageBox QPushButton {
+            color: white;
+            border: none;
+            border-radius: 18px;
+            padding: 10px 24px;
+            font-weight: bold;
+            font-size: 13px;
+            min-width: 120px;
+            min-height: 36px;
+        }
         
-        msg_box.setStyleSheet("""
-            QMessageBox {
-                background-color: #282828;
-                color: white;
-            }
-            QMessageBox QLabel {
-                color: white;
-                font-size: 13px;
-            }
-            QMessageBox QPushButton {
-                background-color: #1DB954;
-                color: white;
-                border: none;
-                border-radius: 15px;
-                padding: 8px 20px;
-                font-weight: bold;
-                min-width: 100px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #1ED760;
-            }
-        """)
+        /* Tombol Minimize - Hijau (Spotify) */
+        QMessageBox QPushButton[text*="Minimize"] {
+            background-color: #1DB954;
+        }
+        QMessageBox QPushButton[text*="Minimize"]:hover {
+            background-color: #1ED760;
+        }
+        QMessageBox QPushButton[text*="Minimize"]:pressed {
+            background-color: #1AA34A;
+        }
         
-        msg_box.exec_()
+        /* Tombol Quit - Merah (Destructive) */
+        QMessageBox QPushButton[text*="Quit"] {
+            background-color: #E22134;
+        }
+        QMessageBox QPushButton[text*="Quit"]:hover {
+            background-color: #FF2A40;
+        }
+        QMessageBox QPushButton[text*="Quit"]:pressed {
+            background-color: #C41E2E;
+        }
         
-        clicked = msg_box.clickedButton()
+        /* Tombol Batal - Abu-abu (Neutral) */
+        QMessageBox QPushButton[text*="Batal"] {
+            background-color: #3E3E3E;
+        }
+        QMessageBox QPushButton[text*="Batal"]:hover {
+            background-color: #4E4E4E;
+        }
+        QMessageBox QPushButton[text*="Batal"]:pressed {
+            background-color: #2E2E2E;
+        }
         
-        if clicked == btn_quit:
+        /* Focus state untuk accessibility */
+        QMessageBox QPushButton:focus {
+            outline: 2px solid #1DB954;
+            outline-offset: 2px;
+        }
+    """)
+    
+    msg_box.exec_()
+    
+    clicked = msg_box.clickedButton()
+    
+    if clicked == btn_quit:
+        self._force_quit = True
+        self.close()
+    elif clicked == btn_minimize:
+        if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
+            self.hide()
+            self.tray_icon.showMessage(
+                "Music Player Pro",
+                "🎵 Aplikasi berjalan di background.\nKlik kanan icon tray untuk menu.",
+                QSystemTrayIcon.Information,
+                2000
+            )
+            event.ignore()
+        else:
             self._force_quit = True
             self.close()
-        elif clicked == btn_minimize:
-            if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
-                self.hide()
-                self.tray_icon.showMessage(
-                    "Music Player Pro",
-                    "🎵 Aplikasi berjalan di background.\nKlik kanan icon tray untuk menu.",
-                    QSystemTrayIcon.Information,
-                    2000
-                )
-                event.ignore()
-            else:
-                self._force_quit = True
-                self.close()
-        else:
-            event.ignore()
+    else:
+        event.ignore()
     
     def cleanup(self):
         """Cleanup resources"""

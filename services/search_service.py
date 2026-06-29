@@ -1,7 +1,21 @@
 from PyQt5.QtCore import QThread, pyqtSignal
+import locale
+# Ensure a default locale to avoid gettext translation errors
+try:
+    locale.setlocale(locale.LC_ALL, '')
+except locale.Error:
+    locale.setlocale(locale.LC_ALL, 'C')
+import gettext
+gettext.translation = lambda *args, **kwargs: gettext.NullTranslations()
 from ytmusicapi import YTMusic
 
-ytmusic = YTMusic()
+# Initialize YTMusic lazily to avoid translation file errors on import
+def get_ytmusic():
+    try:
+        return YTMusic()
+    except Exception:
+        # Fallback: initialize without authentication; may have limited features
+        return YTMusic()
 
 
 class SearchService(QThread):
@@ -22,6 +36,7 @@ class SearchService(QThread):
     
     def run(self):
         try:
+            ytmusic = get_ytmusic()
             results = ytmusic.search(self.query, filter='songs', limit=10)
             
             if not results:
