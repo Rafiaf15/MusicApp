@@ -38,3 +38,21 @@ temp/
 vlc-cache/
 
 todo.md
+
+# AI Assistant cache
+.qwen/
+.blackbox/
+
+# Cache aplikasi
+.musicplayer_cache/
+
+# Plan files (opsional)
+features_v2_plan.md
+todo.md
+
+# Coverage
+.coverage
+htmlcov/
+
+# Environment
+.env
