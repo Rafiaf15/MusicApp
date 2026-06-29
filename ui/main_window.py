@@ -1,12 +1,12 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLineEdit, QListWidget, QListWidgetItem, QLabel, QSlider, 
+    QLineEdit, QListWidget, QLabel, QSlider,
     QMessageBox, QSystemTrayIcon, QMenu, QAction, QProgressBar,
-    QGraphicsOpacityEffect
+    QGraphicsOpacityEffect, QFrame, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QSize, QUrl, QTimer
-from PyQt5.QtGui import QFont, QIcon, QKeyEvent
-from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from PyQt5.QtCore import Qt, QSize, QTimer
+from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtNetwork import QNetworkAccessManager
 import qtawesome as qta
 import os
 
@@ -14,492 +14,564 @@ from .components import AlbumArtLabel, LoadingOverlay
 from .styles import MAIN_STYLE
 
 
+# ─── Palette ────────────────────────────────────────────────────────────────
+GREEN       = "#1DB954"
+GREEN_LIGHT = "#1ED760"
+GREEN_DARK  = "#1AA34A"
+BG_BASE     = "#121212"
+BG_PANEL    = "#181818"
+BG_CARD     = "#242424"
+BG_ELEVATED = "#2A2A2A"
+BORDER      = "#333333"
+TEXT_PRIMARY = "#FFFFFF"
+TEXT_MUTED   = "#B3B3B3"
+TEXT_FAINT   = "#727272"
+RED         = "#E22134"
+RED_LIGHT   = "#FF2A40"
+RED_DARK    = "#C41E2E"
+
+
+CARD_STYLE = f"""
+    QFrame {{
+        background-color: {BG_CARD};
+        border-radius: 12px;
+        border: 1px solid {BORDER};
+    }}
+"""
+
+SLIDER_STYLE = f"""
+    QSlider::groove:horizontal {{
+        height: 4px;
+        background: {BG_ELEVATED};
+        border-radius: 2px;
+    }}
+    QSlider::handle:horizontal {{
+        background: {TEXT_PRIMARY};
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        margin: -5px 0;
+    }}
+    QSlider::handle:horizontal:hover {{
+        background: {GREEN_LIGHT};
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        margin: -6px 0;
+    }}
+    QSlider::sub-page:horizontal {{
+        background: {GREEN};
+        border-radius: 2px;
+    }}
+"""
+
+VOLUME_SLIDER_STYLE = SLIDER_STYLE + f"""
+    QSlider::sub-page:horizontal {{
+        background: {TEXT_MUTED};
+        border-radius: 2px;
+    }}
+"""
+
+DIALOG_STYLE = f"""
+    QMessageBox {{
+        background-color: {BG_CARD};
+        color: {TEXT_PRIMARY};
+        border: 1px solid {BORDER};
+        border-radius: 12px;
+    }}
+    QMessageBox QLabel {{
+        color: {TEXT_MUTED};
+        font-size: 12px;
+        padding: 4px;
+        background: transparent;
+    }}
+    QMessageBox QLabel#qt_msgbox_label {{
+        color: {TEXT_PRIMARY};
+        font-size: 14px;
+        font-weight: bold;
+    }}
+    QMessageBox QPushButton {{
+        color: {TEXT_PRIMARY};
+        border: none;
+        border-radius: 20px;
+        padding: 10px 24px;
+        font-weight: bold;
+        font-size: 13px;
+        min-width: 110px;
+        min-height: 38px;
+    }}
+    QMessageBox QPushButton[text*="Minimize"] {{
+        background-color: {GREEN};
+    }}
+    QMessageBox QPushButton[text*="Minimize"]:hover {{
+        background-color: {GREEN_LIGHT};
+    }}
+    QMessageBox QPushButton[text*="Quit"] {{
+        background-color: {RED};
+    }}
+    QMessageBox QPushButton[text*="Quit"]:hover {{
+        background-color: {RED_LIGHT};
+    }}
+    QMessageBox QPushButton[text*="Batal"] {{
+        background-color: {BG_ELEVATED};
+    }}
+    QMessageBox QPushButton[text*="Batal"]:hover {{
+        background-color: {BORDER};
+    }}
+    QMessageBox QPushButton:focus {{
+        outline: 2px solid {GREEN};
+        outline-offset: 2px;
+    }}
+"""
+
+
+def _label(text="", obj_name="", font_size=12, bold=False, color=TEXT_PRIMARY, align=Qt.AlignLeft):
+    lbl = QLabel(text)
+    if obj_name:
+        lbl.setObjectName(obj_name)
+    weight = QFont.Bold if bold else QFont.Normal
+    lbl.setFont(QFont("Segoe UI", font_size, weight))
+    lbl.setStyleSheet(f"color: {color}; background: transparent;")
+    lbl.setAlignment(align)
+    return lbl
+
+
+def _divider():
+    line = QFrame()
+    line.setFrameShape(QFrame.HLine)
+    line.setStyleSheet(f"color: {BORDER}; background: {BORDER}; max-height: 1px;")
+    return line
+
+
+def _icon_btn(icon_name, color=TEXT_PRIMARY, size=20, fixed=(40, 40), tooltip="", obj_name=""):
+    btn = QPushButton()
+    btn.setIcon(qta.icon(icon_name, color=color, size=size))
+    btn.setIconSize(QSize(size, size))
+    btn.setFixedSize(*fixed)
+    btn.setFocusPolicy(Qt.NoFocus)  # Prevent focus rectangle on click
+    if tooltip:
+        btn.setToolTip(tooltip)
+    if obj_name:
+        btn.setObjectName(obj_name)
+    return btn
+
+
+# ─── Main Window ─────────────────────────────────────────────────────────────
+
 class MainWindow(QWidget):
-    """Optimized main window dengan better resource management"""
-    
+    """Music Player Pro — redesigned for visual clarity."""
+
     def __init__(self):
         super().__init__()
-        
-        self.setWindowTitle("🎵 Music Player Pro")
-        self.setGeometry(100, 100, 1000, 800)
+        self.setWindowTitle("Music Player Pro")
+        self.setGeometry(100, 100, 1060, 780)
         self.setStyleSheet(MAIN_STYLE)
         self.setObjectName("centralWidget")
-        
-        # Set window icon
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icon.png')
+        self._force_quit = False
+
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icon.png"
+        )
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        
-        # Network manager dengan cache
+
         self.nam = QNetworkAccessManager()
-        
-        # UI state
-        self._force_quit = False
-        
-        # Setup UI
-        self.setup_ui()
-        self.setup_tray_icon()
-        
-        self.setFocusPolicy(Qt.StrongFocus)
-        
-        # Auto-hide status label
         self._status_timer = QTimer()
         self._status_timer.setSingleShot(True)
         self._status_timer.timeout.connect(self._clear_status)
-    
+
+        self.setup_ui()
+        self.setup_tray_icon()
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    # ── Layout ───────────────────────────────────────────────────────────────
+
     def setup_ui(self):
-        main_layout = QHBoxLayout()
-        main_layout.setSpacing(30)
-        main_layout.setContentsMargins(30, 30, 30, 30)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(20)
 
-        left_panel = self.create_left_panel()
-        main_layout.addLayout(left_panel, 1)
+        root.addLayout(self._build_left_panel(), 45)
+        root.addLayout(self._build_right_panel(), 55)
 
-        right_panel = self.create_right_panel()
-        main_layout.addLayout(right_panel, 1)
-
-        self.setLayout(main_layout)
-        
         self.loading_overlay = LoadingOverlay(self)
-    
-    def create_left_panel(self):
-        """Panel kiri: Album art, controls, progress"""
-        layout = QVBoxLayout()
-        layout.setSpacing(20)
 
-        # Header - gunakan font default yang aman
-        header = QLabel("🎵 Music Player Pro")
-        header.setObjectName("headerLabel")
-        header.setAlignment(Qt.AlignCenter)
-        header.setFont(QFont("Segoe UI", 24, QFont.Bold))  # Font yang aman
-        layout.addWidget(header)
+    # ── Left panel ───────────────────────────────────────────────────────────
+
+    def _build_left_panel(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(0)
+
+        # ── Header ──────────────────────────────────────────────
+        hdr = _label("Music Player Pro", font_size=20, bold=True,
+                      color=TEXT_PRIMARY, align=Qt.AlignCenter)
+        hdr.setContentsMargins(0, 0, 0, 16)
+        layout.addWidget(hdr)
+
+        # ── Player Card ──────────────────────────────────────────
+        card = QFrame()
+        card.setStyleSheet(CARD_STYLE)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 24, 20, 24)
+        card_layout.setSpacing(16)
 
         # Album Art
         self.album_art = AlbumArtLabel()
-        layout.addWidget(self.album_art, alignment=Qt.AlignCenter)
+        card_layout.addWidget(self.album_art, alignment=Qt.AlignCenter)
 
-        # Now Playing Info
-        self.now_playing_label = QLabel("Tidak ada lagu yang diputar")
+        # Now Playing
+        self.now_playing_label = _label(
+            "Tidak ada lagu yang diputar",
+            font_size=13, color=TEXT_MUTED, align=Qt.AlignCenter
+        )
         self.now_playing_label.setObjectName("nowPlayingLabel")
-        self.now_playing_label.setAlignment(Qt.AlignCenter)
         self.now_playing_label.setWordWrap(True)
-        layout.addWidget(self.now_playing_label)
+        card_layout.addWidget(self.now_playing_label)
 
-        # Loading progress bar
+        # Fetch Progress (hidden by default)
         self.fetch_progress = QProgressBar()
         self.fetch_progress.setRange(0, 100)
         self.fetch_progress.setValue(0)
         self.fetch_progress.setVisible(False)
-        self.fetch_progress.setFixedHeight(6)
+        self.fetch_progress.setFixedHeight(4)
         self.fetch_progress.setTextVisible(False)
-        self.fetch_progress.setStyleSheet("""
-            QProgressBar {
-                background: #2A2A2A;
-                border-radius: 3px;
-            }
-            QProgressBar::chunk {
+        self.fetch_progress.setStyleSheet(f"""
+            QProgressBar {{
+                background: {BG_ELEVATED};
+                border-radius: 2px;
+                border: none;
+            }}
+            QProgressBar::chunk {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1DB954, stop:1 #1ED760);
-                border-radius: 3px;
-            }
+                    stop:0 {GREEN}, stop:1 {GREEN_LIGHT});
+                border-radius: 2px;
+            }}
         """)
-        layout.addWidget(self.fetch_progress)
+        card_layout.addWidget(self.fetch_progress)
 
-        # Progress Bar
+        card_layout.addWidget(_divider())
+
+        # Progress Slider + Time
         self.progress_slider = QSlider(Qt.Horizontal)
         self.progress_slider.setRange(0, 1000)
         self.progress_slider.setValue(0)
-        layout.addWidget(self.progress_slider)
+        self.progress_slider.setStyleSheet(SLIDER_STYLE)
+        card_layout.addWidget(self.progress_slider)
 
-        # Time Labels
-        time_layout = QHBoxLayout()
-        self.current_time_label = QLabel("0:00")
-        self.current_time_label.setObjectName("timeLabel")
-        time_layout.addWidget(self.current_time_label)
-        time_layout.addStretch()
-        self.duration_label = QLabel("0:00")
-        self.duration_label.setObjectName("timeLabel")
-        time_layout.addWidget(self.duration_label)
-        layout.addLayout(time_layout)
+        time_row = QHBoxLayout()
+        self.current_time_label = _label("0:00", font_size=10, color=TEXT_FAINT)
+        self.duration_label     = _label("0:00", font_size=10, color=TEXT_FAINT, align=Qt.AlignRight)
+        time_row.addWidget(self.current_time_label)
+        time_row.addStretch()
+        time_row.addWidget(self.duration_label)
+        card_layout.addLayout(time_row)
 
-        # Shuffle & Repeat buttons
-        mode_layout = QHBoxLayout()
-        mode_layout.addStretch()
-        
-        self.shuffle_btn = QPushButton()
-        self.shuffle_btn.setObjectName("modeBtn")
-        self.shuffle_btn.setFixedSize(45, 45)
-        self.shuffle_btn.setIcon(qta.icon('fa5s.random', color='#B3B3B3', size=18))
-        self.shuffle_btn.setIconSize(QSize(18, 18))
-        self.shuffle_btn.setToolTip("Shuffle (S)")
-        mode_layout.addWidget(self.shuffle_btn)
-        
-        self.repeat_btn = QPushButton()
-        self.repeat_btn.setObjectName("modeBtn")
-        self.repeat_btn.setFixedSize(45, 45)
-        self.repeat_btn.setIcon(qta.icon('fa5s.sync', color='#B3B3B3', size=18))
-        self.repeat_btn.setIconSize(QSize(18, 18))
-        self.repeat_btn.setToolTip("Repeat (R)")
-        mode_layout.addWidget(self.repeat_btn)
-        
-        mode_layout.addStretch()
-        layout.addLayout(mode_layout)
+        # Shuffle / Repeat
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
+        mode_row.addStretch()
 
-        # Control Buttons
-        controls_layout = QHBoxLayout()
-        controls_layout.addStretch()
+        self.shuffle_btn = _icon_btn("fa5s.random", color=TEXT_FAINT, size=16,
+                                     fixed=(36, 36), tooltip="Shuffle (S)", obj_name="modeBtn")
+        self.shuffle_btn.setFocusPolicy(Qt.NoFocus)
+        self.repeat_btn  = _icon_btn("fa5s.sync",   color=TEXT_FAINT, size=16,
+                                     fixed=(36, 36), tooltip="Repeat (R)",  obj_name="modeBtn")
+        self.repeat_btn.setFocusPolicy(Qt.NoFocus)
+        mode_row.addWidget(self.shuffle_btn)
+        mode_row.addWidget(self.repeat_btn)
+        mode_row.addStretch()
+        card_layout.addLayout(mode_row)
 
-        self.prev_btn = QPushButton()
-        self.prev_btn.setObjectName("controlBtn")
-        self.prev_btn.setFixedSize(60, 60)
-        self.prev_btn.setIcon(qta.icon('fa5s.step-backward', color='white', size=24))
-        self.prev_btn.setIconSize(QSize(24, 24))
-        self.prev_btn.setToolTip("Previous (←)")
+        # Playback Controls
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(12)
+        ctrl_row.addStretch()
+
+        self.prev_btn = _icon_btn("fa5s.step-backward", color=TEXT_PRIMARY, size=22,
+                                  fixed=(52, 52), tooltip="Previous (←)", obj_name="controlBtn")
         self.prev_btn.setEnabled(False)
-        controls_layout.addWidget(self.prev_btn)
+        self.prev_btn.setFocusPolicy(Qt.NoFocus)
 
-        self.play_btn = QPushButton()
-        self.play_btn.setObjectName("playBtn")
-        self.play_btn.setFixedSize(80, 80)
-        self.play_btn.setIcon(qta.icon('fa5s.play', color='white', size=32))
-        self.play_btn.setIconSize(QSize(32, 32))
-        self.play_btn.setToolTip("Play/Pause (Space)")
+        self.play_btn = _icon_btn("fa5s.play", color=TEXT_PRIMARY, size=28,
+                                  fixed=(72, 72), tooltip="Play / Pause (Space)", obj_name="playBtn")
         self.play_btn.setEnabled(False)
-        controls_layout.addWidget(self.play_btn)
+        self.play_btn.setFocusPolicy(Qt.NoFocus)
 
-        self.next_btn = QPushButton()
-        self.next_btn.setObjectName("controlBtn")
-        self.next_btn.setFixedSize(60, 60)
-        self.next_btn.setIcon(qta.icon('fa5s.step-forward', color='white', size=24))
-        self.next_btn.setIconSize(QSize(24, 24))
-        self.next_btn.setToolTip("Next (→)")
+        self.next_btn = _icon_btn("fa5s.step-forward", color=TEXT_PRIMARY, size=22,
+                                  fixed=(52, 52), tooltip="Next (→)", obj_name="controlBtn")
         self.next_btn.setEnabled(False)
-        controls_layout.addWidget(self.next_btn)
+        self.next_btn.setFocusPolicy(Qt.NoFocus)
 
-        controls_layout.addStretch()
-        layout.addLayout(controls_layout)
+        ctrl_row.addWidget(self.prev_btn)
+        ctrl_row.addWidget(self.play_btn)
+        ctrl_row.addWidget(self.next_btn)
+        ctrl_row.addStretch()
+        card_layout.addLayout(ctrl_row)
 
-        # Volume Control
-        volume_layout = QHBoxLayout()
+        # Volume
+        vol_row = QHBoxLayout()
+        vol_row.setSpacing(10)
+
         self.volume_icon_btn = QPushButton()
-        self.volume_icon_btn.setFixedSize(30, 30)
-        self.volume_icon_btn.setIcon(qta.icon('fa5s.volume-up', color='white', size=16))
-        self.volume_icon_btn.setIconSize(QSize(16, 16))
-        self.volume_icon_btn.setToolTip("Volume (↑/↓)")
-        self.volume_icon_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background: #333333;
-                border-radius: 4px;
-            }
+        self.volume_icon_btn.setFixedSize(28, 28)
+        self.volume_icon_btn.setIcon(qta.icon("fa5s.volume-up", color=TEXT_MUTED, size=14))
+        self.volume_icon_btn.setIconSize(QSize(14, 14))
+        self.volume_icon_btn.setToolTip("Volume (↑ / ↓)")
+        self.volume_icon_btn.setStyleSheet(f"""
+            QPushButton {{ background: transparent; border: none; border-radius: 4px; }}
+            QPushButton:hover {{ background: {BG_ELEVATED}; }}
         """)
-        volume_layout.addWidget(self.volume_icon_btn)
+        self.volume_icon_btn.setFocusPolicy(Qt.NoFocus)
+        vol_row.addWidget(self.volume_icon_btn)
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(70)
-        self.volume_slider.setFixedWidth(200)
-        volume_layout.addWidget(self.volume_slider)
+        self.volume_slider.setStyleSheet(VOLUME_SLIDER_STYLE)
+        self.volume_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        vol_row.addWidget(self.volume_slider)
 
-        self.volume_label = QLabel("70%")
-        self.volume_label.setObjectName("timeLabel")
-        volume_layout.addWidget(self.volume_label)
-        layout.addLayout(volume_layout)
+        self.volume_label = _label("70%", font_size=10, color=TEXT_FAINT)
+        self.volume_label.setFixedWidth(32)
+        self.volume_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        vol_row.addWidget(self.volume_label)
+        card_layout.addLayout(vol_row)
 
-        # Status Label dengan opacity effect
-        self.status_label = QLabel("")
+        layout.addWidget(card)
+        layout.addSpacing(12)
+
+        # Status
+        self.status_label = _label("", font_size=11, color=TEXT_MUTED, align=Qt.AlignCenter)
         self.status_label.setObjectName("statusLabel")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        
-        opacity_effect = QGraphicsOpacityEffect()
-        opacity_effect.setOpacity(0.8)
-        self.status_label.setGraphicsEffect(opacity_effect)
-        
+        eff = QGraphicsOpacityEffect()
+        eff.setOpacity(0.9)
+        self.status_label.setGraphicsEffect(eff)
         layout.addWidget(self.status_label)
 
-        # Keyboard shortcuts hint
-        hint_label = QLabel("⌨️ Space: Play  |  ←→: Prev/Next  |  ↑↓: Vol  |  Ctrl+Q: Quit  |  Esc: Minimize")
-        hint_label.setStyleSheet("color: #727272; font-size: 10px; margin-top: 10px;")
-        hint_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(hint_label)
+        # Keyboard hint
+        hint = _label(
+            "Space: Play  ·  ← →: Track  ·  ↑ ↓: Vol  ·  Ctrl+Q: Quit  ·  Esc: Minimize",
+            font_size=10, color=TEXT_FAINT, align=Qt.AlignCenter
+        )
+        hint.setContentsMargins(0, 4, 0, 0)
+        layout.addWidget(hint)
 
         layout.addStretch()
         return layout
-    
-    def create_right_panel(self):
-        """Panel kanan: Search dan song list"""
+
+    # ── Right panel ──────────────────────────────────────────────────────────
+
+    def _build_right_panel(self):
         layout = QVBoxLayout()
-        layout.setSpacing(15)
+        layout.setSpacing(12)
 
-        # Search Section
-        search_layout_h = QHBoxLayout()
-        search_icon = QLabel()
-        search_icon.setPixmap(qta.icon('fa5s.search', color='#1DB954', size=20).pixmap(20, 20))
-        search_layout_h.addWidget(search_icon)
-        
-        search_label = QLabel("Cari Lagu")
-        search_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        search_layout_h.addWidget(search_label)
-        search_layout_h.addStretch()
-        layout.addLayout(search_layout_h)
+        # Section header: Search
+        layout.addLayout(self._section_header("fa5s.search", "Cari Lagu"))
 
-        search_box_layout = QHBoxLayout()
+        # Search row
+        search_row = QHBoxLayout()
+        search_row.setSpacing(8)
+
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Masukkan judul lagu atau artis...")
-        search_box_layout.addWidget(self.search_box)
+        self.search_box.setPlaceholderText("Judul lagu atau artis…")
+        self.search_box.setFixedHeight(40)
+        self.search_box.setStyleSheet(f"""
+            QLineEdit {{
+                background: {BG_CARD};
+                border: 1px solid {BORDER};
+                border-radius: 8px;
+                color: {TEXT_PRIMARY};
+                font-size: 13px;
+                padding: 0 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {GREEN};
+            }}
+            QLineEdit::placeholder {{
+                color: {TEXT_FAINT};
+            }}
+        """)
+        search_row.addWidget(self.search_box)
 
-        self.search_btn = QPushButton()
-        self.search_btn.setIcon(qta.icon('fa5s.search', color='white', size=16))
-        self.search_btn.setIconSize(QSize(16, 16))
+        self.search_btn = QPushButton("Cari")
+        self.search_btn.setIcon(qta.icon("fa5s.search", color=TEXT_PRIMARY, size=14))
+        self.search_btn.setIconSize(QSize(14, 14))
         self.search_btn.setFixedSize(80, 40)
         self.search_btn.setToolTip("Cari (Enter)")
-        search_box_layout.addWidget(self.search_btn)
-        layout.addLayout(search_box_layout)
+        self.search_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {GREEN};
+                color: {TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {GREEN_LIGHT}; }}
+            QPushButton:pressed {{ background: {GREEN_DARK}; }}
+        """)
+        search_row.addWidget(self.search_btn)
+        layout.addLayout(search_row)
 
-        # Loading Label
-        self.loading_label = QLabel("")
-        self.loading_label.setStyleSheet("color: #1DB954; font-size: 12px;")
+        # Loading label
+        self.loading_label = _label("", font_size=11, color=GREEN)
         layout.addWidget(self.loading_label)
 
-        # Song List
-        list_layout_h = QHBoxLayout()
-        list_icon = QLabel()
-        list_icon.setPixmap(qta.icon('fa5s.list', color='#1DB954', size=20).pixmap(20, 20))
-        list_layout_h.addWidget(list_icon)
-        
-        list_label = QLabel("Daftar Lagu")
-        list_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        list_layout_h.addWidget(list_label)
-        
-        self.song_count_label = QLabel("")
-        self.song_count_label.setStyleSheet("color: #B3B3B3; font-size: 12px;")
-        list_layout_h.addWidget(self.song_count_label)
-        list_layout_h.addStretch()
-        layout.addLayout(list_layout_h)
+        layout.addWidget(_divider())
 
+        # Section header: Daftar Lagu
+        hdr_row = QHBoxLayout()
+        hdr_row.addLayout(self._section_header("fa5s.list", "Daftar Lagu"))
+        hdr_row.addStretch()
+        self.song_count_label = _label("", font_size=11, color=TEXT_FAINT, align=Qt.AlignRight)
+        hdr_row.addWidget(self.song_count_label)
+        layout.addLayout(hdr_row)
+
+        # Song List
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                background-color: #181818;
-                border: 1px solid #282828;
-                border-radius: 8px;
-                padding: 8px;
-                color: white;
+        self.list_widget.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {BG_PANEL};
+                border: 1px solid {BORDER};
+                border-radius: 10px;
+                padding: 6px;
+                color: {TEXT_PRIMARY};
                 outline: none;
-            }
-            QListWidget::item {
-                background-color: #282828;
-                padding: 10px;
-                border-radius: 4px;
+                font-size: 13px;
+            }}
+            QListWidget::item {{
+                background-color: {BG_CARD};
+                padding: 11px 14px;
+                border-radius: 6px;
                 margin: 2px 0;
                 border-left: 3px solid transparent;
-            }
-            QListWidget::item:selected {
-                background-color: #2A2A2A;
-                border-left: 3px solid #1DB954;
-                color: #1DB954;
-            }
-            QListWidget::item:hover {
-                background-color: #333333;
-            }
+                color: {TEXT_MUTED};
+            }}
+            QListWidget::item:selected {{
+                background-color: {BG_ELEVATED};
+                border-left: 3px solid {GREEN};
+                color: {TEXT_PRIMARY};
+            }}
+            QListWidget::item:hover:!selected {{
+                background-color: {BG_ELEVATED};
+                color: {TEXT_PRIMARY};
+            }}
         """)
         layout.addWidget(self.list_widget)
 
         return layout
-    
+
+    def _section_header(self, icon_name, text):
+        """Returns a QHBoxLayout with an icon + bold label."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(qta.icon(icon_name, color=GREEN, size=16).pixmap(16, 16))
+        row.addWidget(icon_lbl)
+        row.addWidget(_label(text, font_size=14, bold=True))
+        row.addStretch()
+        return row
+
+    # ── System Tray ──────────────────────────────────────────────────────────
+
     def setup_tray_icon(self):
-        """Setup system tray icon"""
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("⚠️ System tray tidak tersedia")
             self.tray_icon = None
             return
-        
+
         self.tray_icon = QSystemTrayIcon(self)
-        
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icon.png')
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icon.png"
+        )
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
         else:
-            self.tray_icon.setIcon(qta.icon('fa5s.music', color='#1DB954', size=32))
-        
-        self.tray_icon.setToolTip("🎵 Music Player Pro")
-        
-        tray_menu = QMenu()
-        
-        # Simpan semua action sebagai attribute
-        self.tray_play_action = QAction("▶ Play")
-        tray_menu.addAction(self.tray_play_action)
-        
-        self.tray_next_action = QAction("⏭ Next")
-        tray_menu.addAction(self.tray_next_action)
-        
-        self.tray_prev_action = QAction("⏮ Previous")
-        tray_menu.addAction(self.tray_prev_action)
-        
-        tray_menu.addSeparator()
-        
-        self.tray_show_action = QAction("👁 Show Window")
-        tray_menu.addAction(self.tray_show_action)
-        
-        self.tray_quit_action = QAction("❌ Quit")
-        tray_menu.addAction(self.tray_quit_action)
-        
-        self.tray_icon.setContextMenu(tray_menu)
+            self.tray_icon.setIcon(qta.icon("fa5s.music", color=GREEN, size=32))
+
+        self.tray_icon.setToolTip("Music Player Pro")
+
+        menu = QMenu()
+        self.tray_play_action = QAction("▶  Play");      menu.addAction(self.tray_play_action)
+        self.tray_next_action = QAction("⏭  Next");      menu.addAction(self.tray_next_action)
+        self.tray_prev_action = QAction("⏮  Previous");  menu.addAction(self.tray_prev_action)
+        menu.addSeparator()
+        self.tray_show_action = QAction("👁  Show");      menu.addAction(self.tray_show_action)
+        self.tray_quit_action = QAction("✕  Quit");      menu.addAction(self.tray_quit_action)
+
+        self.tray_icon.setContextMenu(menu)
         self.tray_icon.show()
-        
-        self.tray_icon.activated.connect(self.on_tray_icon_activated)
-    
-    def on_tray_icon_activated(self, reason):
+        self.tray_icon.activated.connect(self._on_tray_activated)
+
+    def _on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.DoubleClick:
             self.show_from_tray()
-    
+
     def show_from_tray(self):
         self.show()
         self.showNormal()
         self.activateWindow()
-    
+
+    # ── Status helpers ───────────────────────────────────────────────────────
+
     def show_status_message(self, message, timeout=3000):
-        """Show status message dengan auto-hide"""
         self.status_label.setText(message)
         self._status_timer.start(timeout)
-    
+
     def _clear_status(self):
-        """Clear status label"""
         self.status_label.setText("")
-    
-def closeEvent(self, event):
-    """Override close event - tanya user mau minimize atau quit"""
-    # Cek apakah dipanggil dari quit_app (sudah konfirmasi)
-    if self._force_quit:
-        self._force_quit = False
-        if hasattr(self, 'tray_icon') and self.tray_icon:
-            self.tray_icon.hide()
-        event.accept()
-        return
-    
-    # Buat dialog custom yang lebih rapi
-    msg_box = QMessageBox(self)
-    msg_box.setWindowTitle("Keluar Aplikasi")
-    msg_box.setIcon(QMessageBox.Question)
-    msg_box.setText("<b style='font-size: 14px;'>Apa yang ingin Anda lakukan?</b>")
-    msg_box.setInformativeText(
-        "<span style='color: #B3B3B3; font-size: 12px;'>"
-        "Minimize untuk menjalankan di background,<br>"
-        "atau Quit untuk keluar sepenuhnya."
-        "</span>"
-    )
-    
-    # Tambah button custom dengan styling berbeda
-    btn_minimize = msg_box.addButton("📍  Minimize", QMessageBox.AcceptRole)
-    btn_quit = msg_box.addButton("❌  Quit", QMessageBox.DestructiveRole)
-    btn_cancel = msg_box.addButton("Batal", QMessageBox.RejectRole)
-    
-    msg_box.setDefaultButton(btn_minimize)
-    
-    # Styling dialog yang lebih rapi dan konsisten
-    msg_box.setStyleSheet("""
-        /* Background dialog */
-        QMessageBox {
-            background-color: #282828;
-            color: white;
-            border: 1px solid #3E3E3E;
-        }
-        
-        /* Icon dan label utama */
-        QMessageBox QLabel#qt_msgbox_label,
-        QMessageBox QLabel#qt_msgboxex_icon_label {
-            color: white;
-            background: transparent;
-            min-width: 300px;
-        }
-        
-        /* Informative text */
-        QMessageBox QLabel {
-            color: #B3B3B3;
-            font-size: 12px;
-            padding: 5px;
-            background: transparent;
-        }
-        
-        /* Semua tombol - base style */
-        QMessageBox QPushButton {
-            color: white;
-            border: none;
-            border-radius: 18px;
-            padding: 10px 24px;
-            font-weight: bold;
-            font-size: 13px;
-            min-width: 120px;
-            min-height: 36px;
-        }
-        
-        /* Tombol Minimize - Hijau (Spotify) */
-        QMessageBox QPushButton[text*="Minimize"] {
-            background-color: #1DB954;
-        }
-        QMessageBox QPushButton[text*="Minimize"]:hover {
-            background-color: #1ED760;
-        }
-        QMessageBox QPushButton[text*="Minimize"]:pressed {
-            background-color: #1AA34A;
-        }
-        
-        /* Tombol Quit - Merah (Destructive) */
-        QMessageBox QPushButton[text*="Quit"] {
-            background-color: #E22134;
-        }
-        QMessageBox QPushButton[text*="Quit"]:hover {
-            background-color: #FF2A40;
-        }
-        QMessageBox QPushButton[text*="Quit"]:pressed {
-            background-color: #C41E2E;
-        }
-        
-        /* Tombol Batal - Abu-abu (Neutral) */
-        QMessageBox QPushButton[text*="Batal"] {
-            background-color: #3E3E3E;
-        }
-        QMessageBox QPushButton[text*="Batal"]:hover {
-            background-color: #4E4E4E;
-        }
-        QMessageBox QPushButton[text*="Batal"]:pressed {
-            background-color: #2E2E2E;
-        }
-        
-        /* Focus state untuk accessibility */
-        QMessageBox QPushButton:focus {
-            outline: 2px solid #1DB954;
-            outline-offset: 2px;
-        }
-    """)
-    
-    msg_box.exec_()
-    
-    clicked = msg_box.clickedButton()
-    
-    if clicked == btn_quit:
-        self._force_quit = True
-        self.close()
-    elif clicked == btn_minimize:
-        if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isVisible():
-            self.hide()
-            self.tray_icon.showMessage(
-                "Music Player Pro",
-                "🎵 Aplikasi berjalan di background.\nKlik kanan icon tray untuk menu.",
-                QSystemTrayIcon.Information,
-                2000
-            )
-            event.ignore()
-        else:
+
+    # ── Window close ─────────────────────────────────────────────────────────
+
+    def closeEvent(self, event):
+        if self._force_quit:
+            self._force_quit = False
+            if hasattr(self, "tray_icon") and self.tray_icon:
+                self.tray_icon.hide()
+            event.accept()
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Keluar Aplikasi")
+        msg.setIcon(QMessageBox.Question)
+        msg.setText("<b style='font-size:14px;'>Apa yang ingin Anda lakukan?</b>")
+        msg.setInformativeText(
+            f"<span style='color:{TEXT_MUTED}; font-size:12px;'>"
+            "Minimize agar aplikasi tetap berjalan di background,<br>"
+            "atau Quit untuk keluar sepenuhnya."
+            "</span>"
+        )
+
+        btn_minimize = msg.addButton("📍  Minimize", QMessageBox.AcceptRole)
+        btn_quit     = msg.addButton("✕  Quit",     QMessageBox.DestructiveRole)
+        btn_cancel   = msg.addButton("Batal",        QMessageBox.RejectRole)
+
+        msg.setDefaultButton(btn_minimize)
+        msg.setStyleSheet(DIALOG_STYLE)
+        msg.exec_()
+
+        clicked = msg.clickedButton()
+
+        if clicked == btn_quit:
             self._force_quit = True
             self.close()
-    else:
-        event.ignore()
-    
+        elif clicked == btn_minimize:
+            if hasattr(self, "tray_icon") and self.tray_icon and self.tray_icon.isVisible():
+                self.hide()
+                self.tray_icon.showMessage(
+                    "Music Player Pro",
+                    "Aplikasi berjalan di background.\nKlik kanan ikon tray untuk menu.",
+                    QSystemTrayIcon.Information,
+                    2000,
+                )
+                event.ignore()
+            else:
+                self._force_quit = True
+                self.close()
+        else:
+            event.ignore()
+
+    # ── Cleanup ──────────────────────────────────────────────────────────────
+
     def cleanup(self):
-        """Cleanup resources"""
-        if hasattr(self, '_status_timer'):
+        if hasattr(self, "_status_timer"):
             self._status_timer.stop()
