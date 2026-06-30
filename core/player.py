@@ -114,6 +114,19 @@ class MusicPlayer(QObject):
         """Set volume (0-100)"""
         self.player.audio_set_volume(value)
         self.volume_changed.emit(value)
+
+    def set_playback_rate(self, rate: float):
+        """Set playback speed. Accepted values: 0.5, 1.0, 1.2, 1.5, 2.0"""
+        # VLC expects a float rate; clamp to allowed values
+        allowed = {0.5, 1.0, 1.2, 1.5, 2.0}
+        if rate not in allowed:
+            # Emit error but keep current rate
+            self.error_occurred.emit(f"Unsupported playback rate: {rate}")
+            return
+        try:
+            self.player.set_rate(rate)
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to set playback rate: {e}")
     
     def get_volume(self):
         """Get current volume"""

@@ -335,6 +335,13 @@ class MainWindow(QWidget):
         self.volume_label.setFixedWidth(32)
         self.volume_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         vol_row.addWidget(self.volume_label)
+        # Dropdown untuk kecepatan pemutaran
+        from PyQt5.QtWidgets import QComboBox
+        self.speed_combo = QComboBox()
+        self.speed_combo.addItems(["0.5x", "1.0x", "1.2x", "1.5x", "2.0x"])
+        self.speed_combo.setCurrentIndex(1)  # default 1.0x
+        self.speed_combo.setFixedWidth(80)
+        vol_row.addWidget(self.speed_combo)
         card_layout.addLayout(vol_row)
 
         layout.addWidget(card)

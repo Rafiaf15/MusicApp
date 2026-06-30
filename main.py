@@ -136,6 +136,8 @@ class MusicAppController:
         
         # Keyboard shortcuts
         self.setup_keyboard_shortcuts()
+        # Connect playback speed dropdown
+        self.window.speed_combo.currentTextChanged.connect(self.on_speed_changed)
     
     def setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts menggunakan QShortcut"""
@@ -149,9 +151,20 @@ class MusicAppController:
         QShortcut(QKeySequence(Qt.Key_R), self.window).activated.connect(self.on_repeat_clicked)
         QShortcut(QKeySequence("Ctrl+Q"), self.window).activated.connect(self.quit_app)
         QShortcut(QKeySequence(Qt.Key_Escape), self.window).activated.connect(self.minimize_to_tray)
+        # Playback speed shortcuts
+        QShortcut(QKeySequence("Ctrl+1"), self.window).activated.connect(lambda: self.change_playback_rate(0.5))
+        QShortcut(QKeySequence("Ctrl+2"), self.window).activated.connect(lambda: self.change_playback_rate(1.0))
+        QShortcut(QKeySequence("Ctrl+3"), self.window).activated.connect(lambda: self.change_playback_rate(1.2))
+        QShortcut(QKeySequence("Ctrl+4"), self.window).activated.connect(lambda: self.change_playback_rate(1.5))
+        QShortcut(QKeySequence("Ctrl+5"), self.window).activated.connect(lambda: self.change_playback_rate(2.0))
     
     # ==================== SEARCH ====================
     
+    def change_playback_rate(self, rate):
+        """Change playback speed via player"""
+        self.player.set_playback_rate(rate)
+        self.window.show_status_message(f"Kecepatan pemutaran: {rate}x", 3000)
+
     def on_search_clicked(self):
         query = self.window.search_box.text().strip()
         if not query:
@@ -527,6 +540,17 @@ class MusicAppController:
         
         self.update_button_states()
     
+    def on_speed_changed(self, text):
+        """Handle speed dropdown change"""
+        # text format like "1.2x"
+        try:
+            rate = float(text.rstrip('x'))
+        except ValueError:
+            self.window.show_status_message(f"Kecepatan tidak valid: {text}", 3000)
+            return
+        self.player.set_playback_rate(rate)
+        self.window.show_status_message(f"Kecepatan pemutaran: {rate}x", 3000)
+
     def on_repeat_clicked(self):
         mode = self.player.toggle_repeat()
         
